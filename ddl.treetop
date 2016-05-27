@@ -1,0 +1,111 @@
+grammar DDL
+  rule ddl
+     ddl:(ct:create_table / skip / "\n")* {
+        def get
+          ddl.elements.select{ |elm|
+            elm.respond_to?(:ct)
+          }.map{ |elm|
+            elm.ct.get
+          }
+        end
+     }
+  end
+
+  rule skip
+    comment / set_statement
+    / create_schema / engine_statement
+    / use_statement
+  end
+
+  rule create_table
+    space? 'CREATE TABLE IF NOT EXISTS ' bq word bq '.' bq tname:word "` (" space? "\n" fields:field* space* "\n"?
+    space* "\n"? space* preprimary_key:primary_key? "\n"? space* uniqs:uniq_index* space* "\n"? space*
+    postprimary_key:primary_key? space* "\n"? ')' "\n"? {
+        def get
+          primary = if !preprimary_key.text_value.empty?
+                      preprimary_key
+                    elsif !postprimary_key.text_value.empty?
+                      postprimary_key
+                    else
+                      nil
+                    end
+          {
+            tname: tname.text_value,
+            fields: fields.elements.map{|elm|
+              elm.get
+            },
+            primary_key: primary.nil? ? nil : primary.get ,
+            uniq_list: uniqs.elements.map{|elm|
+              elm.get
+            }
+          }
+        end
+      }
+  end
+
+  rule field
+    space* bq name:word bq space* attr:(word '('? word? ')'?) space* not_null:'NOT NULL'? 'NULL'? space* ','? "\n"? {
+      def get
+          {name: name.text_value, attr: attr.text_value, not_null: !not_null.empty? }
+      end
+    }
+  end
+
+  rule primary_key
+    space* 'PRIMARY KEY' space* '(' names:name* ')' {
+      def get
+        names.elements.map{|name|
+          name.get
+        }
+      end
+    }
+  end
+
+  rule name
+    bq name:word bq space* ','? space* {
+      def get
+        name.text_value
+      end
+    }
+  end
+
+  rule uniq_index
+    space* 'UNIQUE INDEX' space* bq uniq_index:word bq space* '(' bq uniq_field:word bq space* 'ASC' ')' space* ','? "\n"? {
+      def get
+        {uniq_index: uniq_index.text_value, uniq_field: uniq_field.text_value}
+      end
+    }
+  end
+
+  rule comment
+    space? '--' (space / word / [.'`"()\[\]])* "\n"
+  end
+
+  rule set_statement
+    space? 'SET' (space / word / "'")* ";\n"
+  end
+
+  rule use_statement
+    space? 'USE' (space / word / bq)* ";\n"
+  end
+
+  rule engine_statement
+    space? 'ENGINE' (space / word)* ";\n"
+  end
+
+  rule create_schema
+    space? 'CREATE SCHEMA' (space / word / bq)* ";\n"
+  end
+
+  rule bq
+    '`'
+  end
+
+  rule space
+    [ \t\r]+
+  end
+
+  rule word
+    [a-zA-Z0-9:.,@=_-]+
+  end
+end
